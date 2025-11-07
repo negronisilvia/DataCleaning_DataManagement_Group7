@@ -1,0 +1,33 @@
+# ---- System files (Mac) ----
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+
+# ---- R / RStudio files ----
+.Rhistory
+.RData
+.Rproj.user/
+.Ruserdata
+*.Rproj
+
+# ---- Data files (no IMPC data on GitHub) ----
+*.csv
+*.tsv
+*.xlsx
+*.rds
+*.db
+*.sqlite
+*.parquet
+*.feather
+*.json
+
+# ---- Logs / temporary ----
+*.log
+*.tmp
+*.bak
+*.swp
+
