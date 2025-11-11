@@ -1,0 +1,195 @@
+---
+title: "Untitled"
+author: "Diksha"
+date: "2025-11-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r Working Directory}
+
+# To get  working directory
+getwd()
+# To set the  working directory 
+setwd()
+#Alternatively use if setwd() is not working 
+#knitr::opts_knit$set(root.dir = "")
+
+
+```
+
+#Loading R packages
+```{r results='hide'}
+
+library(dplyr)
+library(readr)
+library(tidyverse)
+library(fs)
+library(data.table)
+
+```
+
+**Working on sample data**
+```{r}
+
+# create a character vector containing the full paths to each file in that folder.
+csv_file_list <- dir_ls("data_sample")
+
+# Get row names from the first CSV's first column
+row_names <- read_csv(csv_file_list[1]) %>% pull(1)
+
+# Read CSV files from the vector and remove first column 
+df_list <- map(csv_file_list, ~ read_csv(.x) %>% select(-1))
+
+# Combine into a single data frame
+data_1_t <- bind_cols(df_list) %>% as.data.frame()
+
+# Assign row names
+row.names(data_1_t) <- row_names
+# Convert into one data frame 
+data_2_t <- as.data.frame(t(data_1_t))
+#inspect data 
+head(data_2_t,5)
+
+# To export the data as a csv file 
+write.csv(data_1_t, "data_1_t.csv", row.names = TRUE)
+
+```
+
+**Working on the actual data**
+```{r}
+
+
+csv_file_list <- dir_ls("data1")
+df_list <- map(csv_file_list, ~ read_csv(.x) %>% select(-1))
+row_names <- read_csv(csv_file_list[1]) %>% pull(1)
+data <- bind_cols(df_list) %>% as.data.frame()
+row.names(data) <- row_names
+data_2_t <- as.data.frame(t(data_1_t))
+
+write.csv(data, "data.csv", row.names = TRUE)
+
+```
+
+# Error: in some files the row names are ordered differently 
+```{r}
+
+#identifying the files with incorrect row names 
+row_counts <- sapply(csv_file_list, function(f) nrow(fread(f)))
+
+names(row_counts[row_counts == 8])
+
+incorrect_order <- csv_file_list[row_counts == 8]
+incorrect_order 
+
+
+
+```
+
+# to solve this we allocate strings 
+
+#lapply:
+Loops over each file in the files vector.
+For each file, it runs the function defined inside { ... }.
+The output is a list of data frames, one for each CSV.
+
+#df <- read.csv(file, header = FALSE, stringsAsFactors = FALSE)
+
+Reads the CSV file into a data frame df.
+header = FALSE assumes the file does not have column names.
+stringsAsFactors = FALSE keeps text as character, not factor.
+
+#names(df) <- c("key", "value")
+
+Renames the two columns of df to "key" and "value".
+the first column is a  label/variable name and the second is the value.
+
+#df_wide <- tidyr::pivot_wider(df, names_from = key, values_from = value)
+
+Converts the data from long format (two columns: key/value) to wide format.
+
+names_from = key function takes unique values in the "key" column to become 
+new column names.
+
+values_from = valuefunction takes the corresponding "value" becomes the 
+cell content for that new column.
+
+After this, each CSV will have one row and multiple columns corresponding to 
+all the keys.
+
+#df_wide$file <- basename(file)
+Adds a new column "file" that stores the filename of the CSV.
+basename(file) strips the folder path and keeps just the filename.
+
+```{r}
+
+
+# Load required libraries
+library(tidyverse)
+
+# Set your folder path containing the files
+# eg. path <- "/Users/dikshapadwal/Diksha nosync/Group7/data"
+path <- 
+  
+# Get list of all files 
+files <- list.files(path, pattern = "\\.csv$", full.names = TRUE)
+head(files,3)
+
+data_list <- lapply(files, function(file) {
+  df <- read.csv(file, header = FALSE, stringsAsFactors = FALSE)
+  names(df) <- c("key", "value")
+  df_wide <- tidyr::pivot_wider(df, names_from = key, values_from = value)
+  df_wide$file <- basename(file)
+  return(df_wide)
+})
+
+final_data <- bind_rows(data_list)
+#bind_rows(data_list) takes all the data frames in the list data_list and 
+#stacks them row-wise into one data frame.
+
+head(final_data,10)
+dim(final_data)
+
+data_csv <-  as.data.frame(final_data)\
+head(data_csv,10)
+# export data into csv : this will save in the working directory 
+# do getwd() or see the Working Directory chunk 
+fwrite(data_csv, "combined_data2.csv")
+
+```
+
+#Error with binding as some files have the rownames are uppercase 
+
+```{r}
+
+path <- ""
+
+#Get list of all files (assuming CSV; adjust pattern as needed)
+files <- list.files(path, pattern = "\\.csv$", full.names = TRUE)
+head(files,3)
+
+data_list <- lapply(files, function(file) {
+  df <- read.csv(file, header = FALSE, stringsAsFactors = FALSE)
+  names(df) <- c("key", "value")
+  # we added this line to code to ensure that all row names are lower case
+  df$key <- tolower(df$key) 
+  df_wide <- tidyr::pivot_wider(df, names_from = key, values_from = value)
+  df_wide$file <- basename(file)
+  return(df_wide)
+})
+
+final_data <- bind_rows(data_list)
+head(final_data,10)
+dim(final_data)
+
+data_csv <-  as.data.frame(final_data)
+head(data_csv,10)
+fwrite(data_csv,"Combined_Data.csv")
+
+```
+
+
+
