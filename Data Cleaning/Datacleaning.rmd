@@ -1,0 +1,354 @@
+---
+title: "Data Cleaning"
+author: "Diksha"
+date: "2025-11-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+getwd()
+
+```
+
+
+```{r results='hide'}
+
+install.packages("tidyverse")
+install.packages("dplyr")
+install.packages("VIM")
+install.packages("Amelia")
+BiocManager::install("biomaRt")
+
+```
+
+```{r Load Libraries results='hide'}
+
+library(tidyverse)
+library(dplyr)
+library(VIM)
+library(Amelia)
+library(data.table)
+library(biomaRt)
+
+```
+
+```{r Loading the data file}
+
+data <- read.csv("Combined_data.csv")
+
+```
+
+```{r Loading the SOP file}
+
+sop=read.table("IMPC_SOP.csv",sep =",",header=T)  
+
+```
+
+```{r}
+
+head(data,10)
+
+```
+
+```{r}
+
+sop
+
+```
+
+**Looking for Missing or NA values**
+
+```{r}
+
+summary(aggr(data))
+missmap(data, main = "Missing Values", col = c("pink", "snow2"))
+any(is.na(data))
+
+```
+
+# No Missing values found 
+
+#Looking at the structure of the data 
+```{r}
+
+str(data)
+
+```
+
+# Checking if there are any duplicate values
+
+```{r}
+
+duplicates <- data %>%
+  filter(duplicated(analysis_id) | duplicated(analysis_id))
+duplicates
+
+```
+
+**Checking for case sensitive errors in character variables**
+
+# Gene Symbols
+
+```{r}
+
+u1 <- unique(data$gene_symbol)
+u1
+sop$exampleValues[3]
+
+#Here it was identified that some variables had different formatting when 
+#compared to the values in the SOP where in some genes in the data
+#were in upper case 
+
+# To identify all the genes that follow the same patter 
+
+Filter(function(x) length(x) > 1,
+            tapply(u1, tolower(u1), identity))
+
+
+Gene_clean <- data %>% 
+  mutate(gene_symbol = str_to_title(gene_symbol))%>% 
+  mutate(gene_symbol = replace(gene_symbol,
+                               gene_symbol == "1700030j22rik",
+                               "1700030J22Rik"))
+
+```
+
+#Checking if all the genes in the list are valid or are there any typos 
+
+```{r}
+
+
+genes <- unique(Gene_clean$gene_symbol)
+
+# Connect to Ensembl
+ensembl <- useMart("ensembl", dataset = "mmusculus_gene_ensembl") # for mouse
+
+# Query Ensembl for official symbols
+valid_genes <- getBM(
+  attributes = c("mgi_symbol"),
+  filters = "mgi_symbol",
+  values = genes,
+  mart = ensembl
+)
+
+# Compare
+invalid <- setdiff(genes, valid_genes$mgi_symbol)
+invalid
+
+# all the genes are valid and there are no typos in the genes 
+
+```
+
+**Mouse life stage**
+
+```{r}
+
+unique(data$mouse_life_stage)
+sop$exampleValues[5]
+
+# Similar to the gene symbols compared to the SOP some variables in the data
+#were in different case , here the SOP had values in upper case and some variables
+# had data in the lower case 
+
+Mouse_clean <- Gene_clean%>% 
+  mutate(mouse_life_stage = mouse_life_stage %>% 
+           str_to_title())
+
+unique(Mouse_clean$mouse_life_stage)
+
+```
+
+**parameter id**
+
+```{r}
+
+u2 <- unique(Mouse_clean$parameter_id)
+sop$exampleValues[6]
+
+y <- grepl("^[A-Za-z_0-9]+$", u2)
+u2[!y]
+
+# Compared to the SOP some data points were lower case and 
+# additionally there were - instead of _ for view data points 
+# eg. m-g-p_005_001_002 and M-G-P_026_001_004 
+
+Parameter_clean <- Mouse_clean %>%
+  mutate(parameter_id = toupper(str_replace_all(parameter_id, "-", "")))
+
+unique(Parameter_clean$parameter_id)
+
+```
+
+**gene_accession_id**
+
+```{r}
+
+u3 <- unique(Parameter_clean$gene_accession_id)
+
+sop$exampleValues[2]
+
+# to check whether the gene ids are the format MGI: 
+z <- grepl("^[A-Za-z]+:", u3)
+u3[!z]
+
+# Here some data points had a lower case compared to the sop which had the 
+# data points in upper case 
+
+gene_accession_clean <- Parameter_clean%>% 
+  mutate(gene_accession_id = gene_accession_id %>%
+           toupper())
+
+unique(gene_accession_clean$gene_accession_id)
+
+
+
+```
+
+**parameter_name**
+
+```{r}
+
+u9 <- unique(gene_accession_clean$parameter_name)
+sop$exampleValues[7]
+
+# even though the format matchs the SOP 
+# Here there are multiple typos eg "Haemoglobin" and "Hemoglobin" 
+
+# to find the parameter names that vary 
+sort(u9)
+
+#Many more variants such as "HDL cholesterol" ; "HDL-cholesterol" and 
+#"Platelets count" ; "Platelet count" ;  "Platelets-count" 
+
+# To check if they have the same parameter id 
+
+filter_para_name <- gene_accession_clean %>%
+  filter(parameter_name %in% c("Platelet count", "Platelets-count", "Platelets count"))
+filter_para_name
+
+# They have different parameter names this could because they are coming from 
+# different organisations eg. Mouse Genetics Programme for (MGP)
+# Interestingly the no.of parameter names (206) and parameter id  (246) is different 
+
+length(unique(gene_accession_clean$parameter_id))
+length(unique(gene_accession_clean$parameter_name))
+
+# Therefore it could be that one parameter has mutliple parameter id
+# to check this 
+
+parameter_duplicates <- gene_accession_clean %>%
+  group_by(parameter_name) %>%
+  summarise(
+    n_ids = n_distinct(parameter_id),
+    parameter_ids = paste(unique(parameter_id), collapse = ", ")
+  ) %>%
+  filter(n_ids > 1)
+
+parameter_duplicates
+
+# Looking at the specific parameter ids eg Activity (body position) has 
+# 2 ids IMPC_CSD_029_001, JAXLA_CSD_029_001 
+# Seems like these 2 samples were taken from different organisations or locations
+# This is something we cannot amend 
+
+# However the parameter names typos must be amended
+# To check which was the correct spelling, the words were amended according to the 
+# IMPC_parameter_description.txt 
+
+# except of "coat hair color" = "Coat colouration" as they did not have a IMP ID
+# Also there was coat hair which did not match to any parameter so it was kept 
+# as is. 
+# Additionally Otic was thought to be an error 
+# but this was confirmed as a correct parameter name through the txt file 
+
+parameter_name <- gene_accession_clean %>%
+  mutate(parameter_name = recode(parameter_name,
+                                 "Haemoglobin" = "Hemoglobin",
+                                 "Mean corpuscular haemoglobin" = "Mean corpuscular hemoglobin",
+                                 "Mean cell haemoglobin concentration" = "Mean cell hemoglobin concentration",
+                                 "HDL cholesterol" = "HDL-cholesterol",
+                                 "Centre average speed" = "Center average speed",
+                                 "Centre distance travelled" = "Center distance travelled",
+                                 "Platelets count" = "Platelet count", 
+                                 "Platelets-count" = "Platelet count",
+                                 "Triglyceride" = "Triglycerides",
+                                 "Fat Mass" = "Fat mass",
+                                 "coat hair color" = "Coat colouration"))
+
+```
+
+# Pvalue 
+
+```{r}
+
+hist(parameter_name$pvalue)
+
+sop$maxValue[8]
+sop$minValue[8]
+
+# Compared to the sop 
+#Here there are some p values that are negative, some are exact 0 and above 1
+
+sum(parameter_name$pvalue < 0, na.rm = TRUE)
+# 32 values are negative 
+
+sum(parameter_name$pvalue == 0, na.rm = TRUE)
+# 52 values are 0 
+
+sum(parameter_name$pvalue > 1, na.rm = TRUE)
+# 365 values are above 1 
+
+# therefore these values were removed from the data 
+
+data_clean <- parameter_name %>%
+  filter(pvalue > 0 & pvalue < 1)
+
+
+hist(data_clean$pvalue)
+
+```
+
+# Clean data 
+
+
+```{r}
+
+
+#Performing final checks
+unique(data_clean$gene_accession_id)
+unique(data_clean$gene_symbol)
+unique(data_clean$mouse_strain)
+unique(data_clean$mouse_life_stage)
+unique(data_clean$parameter_id)
+sort(unique(data_clean$parameter_name))
+
+
+```
+
+
+# Bringing analysis ID in the 1st Coloumn and removeing the file coloumn 
+```{r draft clean data}
+
+str(data_clean)
+
+data_clean_draft <- data_clean%>%
+  dplyr::select(analysis_id, everything(), -file)
+
+str(data_clean_draft)
+
+```
+
+# Downloading the Correct CSV file 
+
+```{r}
+
+
+fwrite(data_clean_draft,"Clean_Data.csv")
+
+```
+
