@@ -1,0 +1,168 @@
+---
+title: "Supplimentary files Cleaning"
+author: "Diksha"
+date: "2025-11-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+getwd()
+
+```
+
+```{r}
+
+
+library(tidyverse)
+library(dplyr)
+library(data.table)
+
+```
+
+# Disease Information 
+
+```{r}
+
+
+Disease_information <- read.table("Disease_information.txt", header = TRUE, sep = "\t")
+
+
+```
+
+```{r}
+
+head(Disease_information,10)
+
+```
+
+```{r}
+
+# This is to check if the data points in Disease ID are in the similar format and case
+u4 <- unique(Disease_information$DO.Disease.ID)
+z <- grepl("^[A-Za-z]+:", u4)
+u4[!z]
+
+length(u4)
+
+length(toupper(unique(Disease_information$DO.Disease.ID)))
+
+# This is to check if the data points in OMIM.IDs are in the similar format and case
+
+u5 <- unique(Disease_information$OMIM.IDs)
+z <- grepl("^[A-Za-z]+:", u5)
+u5[!z]
+
+length(u5)
+
+length(toupper(unique(Disease_information$OMIM.IDs)))
+
+#To look for NA values 
+any(is.na(Disease_information))
+
+```
+
+# For easy linking in SQL changing coloumn name of Mouse.MGI.ID which is the gene_accession_id
+
+```{r}
+
+Disease_information_1 <- Disease_information %>%
+  rename(gene_accession_id = Mouse.MGI.ID)
+
+# This was performed as saftey measure to remove any extra spaces 
+Disease_information_1 <- Disease_information_1 %>% 
+  mutate(across(where(is.character), trimws))
+
+head(Disease_information_1,10)
+
+```
+
+# Exporting the Cleaned Disease information as a CSV file 
+
+```{r}
+
+fwrite(Disease_information_1,"Disease_information_clean.csv")
+
+```
+
+# IMPC_procedure 
+
+```{r}
+
+IMPC_procedure <- read.table("IMPC_procedure.txt", header = TRUE, sep = ",")
+head(IMPC_procedure,10)
+
+str(IMPC_procedure)
+
+# This was performed as saftey measure to remove any extra spaces 
+IMPC_procedure <- IMPC_procedure %>% 
+  mutate(across(where(is.character), trimws))
+
+any(is.na(IMPC_procedure))
+
+
+```
+
+
+
+```{r}
+
+fwrite(IMPC_procedure,"IMPC_procedure_clean.csv")
+
+```
+
+
+```{r}
+
+IMPC_parameter_description <- read.table("IMPC_parameter_description.txt", header = TRUE, sep = ",")
+head(IMPC_parameter_description,10)
+
+# here the title impcParameterOrigId matches the impcParameterOrigId in the IMPC_procedure file 
+
+```
+
+
+```{r}
+
+# Renames is to ensure the column match the clean data during the SQl 
+# Additionally description column was formated to remove underscore and case 
+IMPC_parameter_description_1 <- IMPC_parameter_description %>%
+  mutate(description = str_to_title(str_replace_all(description, "_", " "))) %>%
+  rename(parameter_name = name,
+        parameter_id = parameterId)
+
+# To check if the format of the parameter id is correct 
+head(IMPC_parameter_description_1,10)
+u5 <- unique(IMPC_parameter_description_1$parameter_id)
+z <- grepl("^[A-Za-z0-9_]+$", u5)
+u5[!z]    # invalid parameter IDs
+
+# Some spaces were observed eg " IMPC_ALZ_088_001" therefore the data was trimmed 
+# to remove extra spaces
+
+# This was performed as saftey measure to remove any extra spaces 
+IMPC_parameter_description_1 <- IMPC_parameter_description_1 %>% 
+  mutate(across(where(is.character), trimws))
+
+any(is.na(IMPC_parameter_description_1))
+
+# However when the data was exported some data points in the description were Na 
+
+filter(IMPC_parameter_description_1, description == "Na")
+
+IMPC_parameter_description_1 <- IMPC_parameter_description_1 %>%
+  mutate(description = ifelse(description == "Na","", description))
+
+```
+
+
+```{r}
+
+fwrite(IMPC_parameter_description_1,"IMPC_parameter_description_clean.csv")
+
+```
+
